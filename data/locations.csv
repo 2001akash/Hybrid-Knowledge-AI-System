@@ -1,4 +1,26 @@
-id,name,type,country,description,lat,lon
-1,Jaipur,City,India,Known as the Pink City,26.9124,75.7873
-2,Goa,State,India,Famous for beaches and nightlife,15.2993,74.1240
-3,Delhi,City,India,Capital city with historic monuments,28.6139,77.2090
+id,name,type,description,country,lat,lon,rating,tags
+1,Taj Mahal,monument,Iconic white marble mausoleum built by Emperor Shah Jahan,India,27.1751,78.0421,4.8,unesco heritage romantic architecture
+2,Red Fort,monument,Historic fortified palace complex in Old Delhi,India,28.6562,77.2410,4.5,unesco heritage history architecture
+3,India Gate,monument,War memorial commemorating Indian soldiers,India,28.6129,77.2295,4.3,memorial landmark history
+4,Qutub Minar,monument,Tallest brick minaret in the world,India,28.5244,77.1855,4.6,unesco heritage architecture history
+5,Lotus Temple,temple,Baháʼí House of Worship famous for lotus-like shape,India,28.5535,77.2588,4.5,architecture spiritual peaceful
+6,Humayun's Tomb,monument,Mughal Emperor Humayun's tomb garden complex,India,28.5933,77.2507,4.7,unesco heritage architecture garden
+7,Akshardham Temple,temple,Large Hindu temple complex with intricate carvings,India,28.6127,77.2773,4.8,spiritual architecture cultural
+8,Jama Masjid,mosque,One of the largest mosques in India,India,28.6507,77.2334,4.4,religious architecture history
+9,Chandni Chowk,market,Historic market in Old Delhi,India,28.6506,77.2303,4.2,shopping cultural food
+10,Hauz Khas Village,neighborhood,Trendy neighborhood with cafes and boutiques,India,28.5494,77.1932,4.3,nightlife shopping food
+11,Connaught Place,shopping,Major commercial and business hub,India,28.6315,77.2167,4.1,shopping dining business
+12,Lodhi Garden,park,Historic park with 15th century monuments,India,28.5932,77.2197,4.5,nature history peaceful
+13,Sarojini Nagar Market,market,Popular shopping destination for budget shopping,India,28.5751,77.1933,4.0,shopping bargains local
+14,Dilli Haat,market,Open-air craft bazaar with regional cuisines,India,28.5494,77.1932,4.2,crafts food cultural
+15,Raj Ghat,memorial,Memorial dedicated to Mahatma Gandhi,India,28.6414,77.2506,4.3,history memorial peaceful
+16,Gurudwara Bangla Sahib,temple,Prominent Sikh house of worship,India,28.6262,77.2082,4.7,religious spiritual peaceful
+17,National Museum,museum,Premier museum showcasing Indian art and history,India,28.6119,77.2196,4.4,culture history art
+18,Vietnam Museum of Ethnology,museum,Comprehensive museum of Vietnamese ethnic groups,Vietnam,21.0391,105.7967,4.6,culture history educational
+19,Hoan Kiem Lake,park,Historic lake in central Hanoi,Vietnam,21.0285,105.8522,4.4,nature romantic scenic
+20,Ha Long Bay,nature,UNESCO World Heritage bay with limestone islands,Vietnam,20.9101,107.1839,4.9,unesco nature scenic adventure
+21,Hoi An Ancient Town,neighborhood,Well-preserved ancient trading port,Vietnam,15.8801,108.3380,4.8,unesco history cultural romantic
+22,Cu Chi Tunnels,historic,Underground tunnel network from Vietnam War,Vietnam,11.0510,106.4590,4.5,history adventure educational
+23,Mekong Delta,nature,Network of rivers and swamps in southern Vietnam,Vietnam,10.0000,105.7667,4.6,nature adventure cultural
+24,Imperial City,monument,Citadel and palace in Hue,Vietnam,16.4637,107.5909,4.5,unesco history architecture
+25,Phong Nha Cave,nature,Spectacular cave system in Phong Nha-Ke Bang National Park,Vietnam,17.5828,106.2844,4.7,unesco nature adventure
