@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -9,6 +10,14 @@ from hybrid_chat import answer
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+=======
+from fastapi import FastAPI
+from pydantic import BaseModel
+from hybrid_chat import answer_query
+import asyncio
+
+app = FastAPI()
+>>>>>>> d598d227ddf3cd074c16545fd2c9005e2806aa3e
 
 app = FastAPI(
     title="Blue Enigma Hybrid Travel Assistant",
@@ -62,6 +71,7 @@ async def health_check():
 
 @app.post("/chat", response_model=ChatResponse, tags=["Chat"])
 async def chat(q: Query):
+<<<<<<< HEAD
     """
     Main chat endpoint for travel queries
     
@@ -119,3 +129,6 @@ if __name__ == "__main__":
         reload=True,
         log_level="info"
     )
+=======
+    return await answer_query(q.query)
+>>>>>>> d598d227ddf3cd074c16545fd2c9005e2806aa3e
