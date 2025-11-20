@@ -1,218 +1,318 @@
-"""
-Advanced Hybrid RAG Agent
-- async embedding + pinecone + neo4j
-- embedding cache
-- query intent router
-- reranking algorithm
-- summarization of nodes
-- chain-of-thought style prompt
-- itinerary generator
-"""
-import asyncio
-import aiosqlite
-from typing import List, Dict
+import os
+from dotenv import load_dotenv
+from neo4j import GraphDatabase
 from openai import OpenAI
 from pinecone import Pinecone
-from neo4j import GraphDatabase
-import config
-import hashlib
-import pickle
-from concurrent.futures import ThreadPoolExecutor
+import re
+from typing import List, Dict, Tuple
 
-client = OpenAI(api_key=config.OPENAI_API_KEY)
-pc = Pinecone(api_key=config.PINECONE_API_KEY)
-INDEX = pc.Index(config.PINECONE_INDEX_NAME)
-driver = GraphDatabase.driver(config.NEO4J_URI, auth=(config.NEO4J_USER, config.NEO4J_PASSWORD))
-POOL = ThreadPoolExecutor(max_workers=6)
+load_dotenv()
 
-# -------------------------
-# EMBEDDING CACHE
-# -------------------------
-async def ensure_cache():
-    async with aiosqlite.connect(config.EMBED_CACHE_DB) as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY, vec BLOB)")
-        await db.commit()
+# Initialize clients
+driver = GraphDatabase.driver(
+    os.getenv("NEO4J_URI"),
+    auth=(os.getenv("NEO4J_USER"), os.getenv("NEO4J_PASSWORD"))
+)
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+index = pc.Index(os.getenv("PINECONE_INDEX_NAME", "travel-docs"))
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def hash_text(s: str):
-    return hashlib.sha256(s.encode()).hexdigest()
+EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 
-async def cache_get(key: str):
-    async with aiosqlite.connect(config.EMBED_CACHE_DB) as db:
-        cur = await db.execute("SELECT vec FROM cache WHERE key=?", (key,))
-        row = await cur.fetchone()
-        if row:
-            return pickle.loads(row[0])
-    return None
-
-async def cache_set(key: str, val):
-    async with aiosqlite.connect(config.EMBED_CACHE_DB) as db:
-        await db.execute("INSERT OR REPLACE INTO cache(key, vec) VALUES (?,?)", (key, pickle.dumps(val)))
-        await db.commit()
-
-async def embed_text(text: str):
-    await ensure_cache()
-    h = hash_text(text)
-    cached = await cache_get(h)
-    if cached:
-        return cached
-    resp = client.embeddings.create(model=config.OPENAI_EMBEDDING_MODEL, input=[text])
-    vec = resp.data[0].embedding
-    await cache_set(h, vec)
-    return vec
-
-# -------------------------
-# INTENT ROUTER
-# -------------------------
-def classify_intent(q: str):
-    ql = q.lower()
-    if any(k in ql for k in ["itinerary", "plan", "day", "romantic"]):
-        return "itinerary"
-    if "best time" in ql or "weather" in ql:
-        return "weather"
-    return "generic"
-
-# -------------------------
-# PINECONE SEARCH
-# -------------------------
-async def search_pinecone(query: str):
-    vec = await embed_text(query)
-    result = INDEX.query(vector=vec, top_k=config.TOP_K, include_metadata=True)
-    return [
-        {"id": m.id, "score": getattr(m, "score", 0), "metadata": m.metadata}
-        for m in result.matches
-    ]
-
-# -------------------------
-# NEO4J ENRICHMENT
-# -------------------------
-def _neo4j_neighbors(ids: List[str]):
-    facts = []
-    with driver.session() as session:
-        for nid in ids:
-            q = """
-            MATCH (n:Entity {id:$nid})-[r]-(m:Entity)
-            RETURN type(r) as rel, m.id as id, m.name as name, m.description as description
-            """
-            res = session.run(q, nid=nid)
-            for r in res:
-                facts.append({
-                    "src": nid,
-                    "rel": r["rel"],
-                    "id": r["id"],
-                    "name": r["name"],
-                    "desc": (r["description"] or "")[:350]
-                })
-    return facts
-
-async def enrich_graph(ids: List[str]):
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(POOL, _neo4j_neighbors, ids)
-
-# -------------------------
-# RERANKING SCORE
-# -------------------------
-def rerank(matches, facts):
-    g_ids = set(f["id"] for f in facts)
-    result = []
-    for m in matches:
-        boost = 0.15 if m["id"] in g_ids else 0
-        final = m["score"] + boost
-        result.append((final, m))
-    result.sort(key=lambda x: x[0], reverse=True)
-    return [m for _, m in result]
-
-# -------------------------
-# SUMMARIZER
-# -------------------------
-def summarize_nodes(nodes):
-    text = "\n".join([
-        f"{n['id']}: {n['metadata'].get('name')} ({n['metadata'].get('city')})"
-        for n in nodes[:6]
-    ])
-    sys = "Summarize these travel nodes in 2–3 short sentences."
-    resp = client.chat.completions.create(
-        model=config.OPENAI_CHAT_MODEL,
-        messages=[
-            {"role": "system", "content": sys},
-            {"role": "user", "content": text}
-        ],
-        max_tokens=120
-    )
-    return resp.choices[0].message.content
-
-# -------------------------
-# BUILD PROMPT
-# -------------------------
-def build_prompt(query, ranked, facts, intent):
-    vec_lines = "\n".join([
-        f"- {m['id']} | {m['metadata'].get('name')} | {m['metadata'].get('city')}"
-        for m in ranked[:8]
-    ])
-    fact_lines = "\n".join([
-        f"- ({f['src']}) -[{f['rel']}]-> ({f['id']}) {f['name']}: {f['desc']}"
-        for f in facts[:20]
-    ])
-    system = (
-        "You are an expert Vietnam travel assistant. Use vector results + graph facts. "
-        "Provide practical, concise answers. Cite node ids when referencing attractions."
-    )
-    user = f"""
-User query: {query}
-
-Top matches:
-{vec_lines}
-
-Graph facts:
-{fact_lines}
-
-Intent: {intent}
-
-Produce:
-1. A short chain-of-thought reasoning (2 sentences).
-2. Final answer with tips.
-3. If itinerary: produce day-by-day plan.
-"""
-    return [{"role": "system", "content": system},
-            {"role": "user", "content": user}]
-
-# -------------------------
-# MAIN ANSWER PIPELINE
-# -------------------------
-async def answer_query(query):
-    intent = classify_intent(query)
-    matches = await search_pinecone(query)
-    ids = [m["id"] for m in matches]
-    facts = await enrich_graph(ids)
-    ranked = rerank(matches, facts)
-    summary = summarize_nodes(ranked)
-
-    prompt = build_prompt(query, ranked, facts, intent)
-    resp = client.chat.completions.create(
-        model=config.OPENAI_CHAT_MODEL,
-        messages=prompt,
-        max_tokens=600
-    )
-    return {
-        "summary": summary,
-        "answer": resp.choices[0].message.content,
-        "matches": ranked[:6],
-        "facts": facts[:12]
+def extract_entities(query: str) -> Dict[str, List[str]]:
+    """Extract key entities from query using simple pattern matching"""
+    entities = {
+        "countries": [],
+        "cities": [],
+        "types": [],
+        "keywords": []
     }
+    
+    # Common travel-related keywords
+    location_types = [
+        "restaurant", "hotel", "museum", "beach", "park", "temple", 
+        "market", "cafe", "bar", "landmark", "attraction", "monument"
+    ]
+    
+    query_lower = query.lower()
+    
+    # Extract location types
+    for loc_type in location_types:
+        if loc_type in query_lower:
+            entities["types"].append(loc_type)
+    
+    # Extract potential location names (capitalized words)
+    words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', query)
+    entities["keywords"].extend(words)
+    
+    return entities
 
-# -------------------------
-# CLI
-# -------------------------
-def cli():
-    loop = asyncio.get_event_loop()
-    print("🌏 Advanced Hybrid Travel Assistant. Type 'exit' to quit.")
+def neo4j_search(query: str, limit: int = 5) -> List[Dict]:
+    """Search Neo4j knowledge graph using full-text search"""
+    with driver.session() as s:
+        try:
+            # Try full-text search first
+            res = s.run("""
+                CALL db.index.fulltext.queryNodes('locationFullTextIndex', $q)
+                YIELD node, score 
+                MATCH (node)-[:IN_COUNTRY]->(c:Country)
+                RETURN node.name AS name, 
+                       node.description AS description, 
+                       node.type AS type,
+                       c.name AS country,
+                       node.rating AS rating,
+                       score
+                ORDER BY score DESC
+                LIMIT $limit
+            """, {"q": query, "limit": limit})
+            
+            results = []
+            for record in res:
+                results.append({
+                    "name": record["name"],
+                    "description": record["description"],
+                    "type": record["type"],
+                    "country": record["country"],
+                    "rating": record["rating"],
+                    "score": record["score"]
+                })
+            
+            return results
+            
+        except Exception as e:
+            print(f"Neo4j search error: {e}")
+            # Fallback to simple pattern matching
+            res = s.run("""
+                MATCH (l:Location)-[:IN_COUNTRY]->(c:Country)
+                WHERE l.name CONTAINS $q OR l.description CONTAINS $q OR c.name CONTAINS $q
+                RETURN l.name AS name, 
+                       l.description AS description, 
+                       l.type AS type,
+                       c.name AS country,
+                       l.rating AS rating
+                LIMIT $limit
+            """, {"q": query, "limit": limit})
+            
+            return [dict(record) for record in res]
+
+def get_locations_by_country(country: str, limit: int = 10) -> List[Dict]:
+    """Get top locations in a specific country"""
+    with driver.session() as s:
+        res = s.run("""
+            MATCH (l:Location)-[:IN_COUNTRY]->(c:Country {name: $country})
+            RETURN l.name AS name, 
+                   l.description AS description, 
+                   l.type AS type,
+                   l.rating AS rating
+            ORDER BY l.rating DESC
+            LIMIT $limit
+        """, {"country": country, "limit": limit})
+        
+        return [dict(record) for record in res]
+
+def pinecone_search(query: str, k: int = 5, filters: Dict = None) -> List[Dict]:
+    """Search Pinecone vector database"""
+    try:
+        emb = openai_client.embeddings.create(
+            model=EMBEDDING_MODEL, 
+            input=query
+        ).data[0].embedding
+        
+        # Apply filters if provided
+        query_params = {
+            "vector": emb,
+            "top_k": k,
+            "include_metadata": True
+        }
+        
+        if filters:
+            query_params["filter"] = filters
+        
+        res = index.query(**query_params)
+        
+        results = []
+        for match in res.matches:
+            results.append({
+                "id": match.id,
+                "score": match.score,
+                "text": match.metadata.get("full_chunk", match.metadata.get("chunk_text", "")),
+                "source": match.metadata.get("source", ""),
+                "title": match.metadata.get("title", "")
+            })
+        
+        return results
+        
+    except Exception as e:
+        print(f"Pinecone search error: {e}")
+        return []
+
+def determine_query_type(query: str) -> str:
+    """Classify query to determine best retrieval strategy"""
+    query_lower = query.lower()
+    
+    # Itinerary planning queries
+    if any(word in query_lower for word in ["itinerary", "trip", "plan", "days", "visit", "travel to"]):
+        return "itinerary"
+    
+    # Specific location queries
+    if any(word in query_lower for word in ["where", "find", "recommend", "best", "top"]):
+        return "recommendation"
+    
+    # Factual queries
+    if any(word in query_lower for word in ["what", "who", "when", "how", "why"]):
+        return "factual"
+    
+    return "general"
+
+def build_context(query: str, neo4j_results: List[Dict], pinecone_results: List[Dict]) -> str:
+    """Build comprehensive context from both sources"""
+    context_parts = []
+    
+    # Add Neo4j structured data
+    if neo4j_results:
+        context_parts.append("=== Locations from Knowledge Graph ===")
+        for i, result in enumerate(neo4j_results[:5], 1):
+            location_info = f"{i}. {result.get('name', 'Unknown')}"
+            if result.get('type'):
+                location_info += f" ({result['type']})"
+            if result.get('country'):
+                location_info += f" in {result['country']}"
+            if result.get('description'):
+                location_info += f"\n   Description: {result['description']}"
+            if result.get('rating'):
+                location_info += f"\n   Rating: {result['rating']}/5"
+            context_parts.append(location_info)
+    
+    # Add Pinecone unstructured data
+    if pinecone_results:
+        context_parts.append("\n=== Detailed Travel Information ===")
+        for i, result in enumerate(pinecone_results[:3], 1):
+            doc_info = f"{i}. From {result.get('title', 'Travel Guide')}:\n   {result.get('text', '')[:500]}..."
+            context_parts.append(doc_info)
+    
+    return "\n\n".join(context_parts)
+
+def generate_answer(query: str, context: str, query_type: str) -> str:
+    """Generate answer using OpenAI with context-aware prompting"""
+    
+    system_prompts = {
+        "itinerary": """You are an expert travel planner. Create detailed, day-by-day itineraries 
+        that include specific locations, activities, timing, and practical tips. Be specific and organized.""",
+        
+        "recommendation": """You are a knowledgeable travel advisor. Provide specific recommendations 
+        with clear reasoning, considering factors like ratings, location type, and traveler preferences.""",
+        
+        "factual": """You are a travel information specialist. Provide accurate, concise answers 
+        based on the available information. If information is uncertain, say so.""",
+        
+        "general": """You are a helpful travel assistant. Provide informative, friendly responses 
+        that help users plan their travels."""
+    }
+    
+    system_prompt = system_prompts.get(query_type, system_prompts["general"])
+    
+    user_prompt = f"""Based on the following information, answer this question: {query}
+
+{context}
+
+Instructions:
+- Be specific and use information from both the locations database and travel guides
+- If creating an itinerary, organize by days and include timing
+- Mention specific location names, types, and ratings when relevant
+- If information is limited, acknowledge it and provide best available guidance
+- Keep the response well-structured and easy to follow
+"""
+    
+    try:
+        resp = openai_client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1500
+        )
+        
+        return resp.choices[0].message.content
+        
+    except Exception as e:
+        return f"Error generating response: {e}"
+
+def answer(query: str, verbose: bool = False) -> str:
+    """Main function to answer queries using hybrid search"""
+    
+    # Determine query type
+    query_type = determine_query_type(query)
+    
+    if verbose:
+        print(f"\n🔍 Query type: {query_type}")
+        print(f"📝 Processing: {query}\n")
+    
+    # Search both sources
+    neo4j_results = neo4j_search(query, limit=10)
+    pinecone_results = pinecone_search(query, k=5)
+    
+    if verbose:
+        print(f"📊 Found {len(neo4j_results)} results from Neo4j")
+        print(f"📊 Found {len(pinecone_results)} results from Pinecone\n")
+    
+    # For itinerary queries, also get top locations by country
+    entities = extract_entities(query)
+    if query_type == "itinerary" and entities["keywords"]:
+        for keyword in entities["keywords"]:
+            country_locations = get_locations_by_country(keyword, limit=15)
+            if country_locations:
+                neo4j_results.extend(country_locations)
+                if verbose:
+                    print(f"📍 Added {len(country_locations)} locations from {keyword}")
+    
+    # Build context
+    context = build_context(query, neo4j_results, pinecone_results)
+    
+    # Generate answer
+    answer_text = generate_answer(query, context, query_type)
+    
+    return answer_text
+
+def interactive_chat():
+    """Run interactive chat session"""
+    print("=" * 60)
+    print("🌍 Blue Enigma Travel Assistant")
+    print("=" * 60)
+    print("Ask me about travel destinations, itineraries, or recommendations!")
+    print("Type 'quit' or 'exit' to end the session.\n")
+    
     while True:
-        q = input("\nQuery: ").strip()
-        if q.lower() in ["exit", "quit"]:
+        try:
+            query = input("You: ").strip()
+            
+            if not query:
+                continue
+            
+            if query.lower() in ['quit', 'exit', 'bye']:
+                print("\n👋 Happy travels! Goodbye!")
+                break
+            
+            print("\n🤔 Thinking...\n")
+            response = answer(query, verbose=True)
+            print(f"\n🌟 Assistant: {response}\n")
+            print("-" * 60 + "\n")
+            
+        except KeyboardInterrupt:
+            print("\n\n👋 Happy travels! Goodbye!")
             break
-        out = loop.run_until_complete(answer_query(q))
-        print("\n=== SUMMARY ===\n", out["summary"])
-        print("\n=== ANSWER ===\n", out["answer"])
-        print("\n---")
+        except Exception as e:
+            print(f"\n❌ Error: {e}\n")
 
 if __name__ == "__main__":
-    cli()
+    # Test with example query
+    test_query = "create a romantic 4 day itinerary for Vietnam"
+    print(f"Testing with: {test_query}\n")
+    result = answer(test_query, verbose=True)
+    print(f"\nAnswer:\n{result}")
+    
+    # Start interactive mode
+    print("\n" + "=" * 60 + "\n")
+    interactive_chat()
