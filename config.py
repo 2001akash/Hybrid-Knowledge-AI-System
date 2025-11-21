@@ -13,30 +13,30 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "travel-docs")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 
-# OpenAI Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+# Groq Configuration
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "mixtral-8x7b-32768")   # Default
+GROQ_EMBED_MODEL = os.getenv("GROQ_EMBED_MODEL", "all-MiniLM-L6-v2")   # Local embedding model
 
-# Validate required configurations
 def validate_config():
-    """Validate that all required config values are set"""
+    """Validate required configuration values."""
     required = {
         "NEO4J_PASSWORD": NEO4J_PASSWORD,
         "PINECONE_API_KEY": PINECONE_API_KEY,
-        "OPENAI_API_KEY": OPENAI_API_KEY
+        "GROQ_API_KEY": GROQ_API_KEY
     }
-    
+
     missing = [k for k, v in required.items() if not v]
-    
+
     if missing:
-        raise ValueError(f"Missing required configuration: {', '.join(missing)}")
-    
+        raise ValueError(f"Missing required configuration variables: {', '.join(missing)}")
+
     return True
+
 
 if __name__ == "__main__":
     try:
         validate_config()
-        print("✅ All configurations are valid!")
+        print("✅ All configurations are valid for Groq setup!")
     except ValueError as e:
         print(f"❌ Configuration error: {e}")

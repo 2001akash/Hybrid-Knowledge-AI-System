@@ -1,11 +1,11 @@
 import json
 from neo4j import GraphDatabase
-import config
+import config1
 from typing import Optional, Dict, List
 
 driver = GraphDatabase.driver(
-    config.NEO4J_URI,
-    auth=(config.NEO4J_USER, config.NEO4J_PASSWORD)
+    config1.NEO4J_URI,
+    auth=(config1.NEO4J_USER, config1.NEO4J_PASSWORD)
 )
 
 def get_graph_data(limit: int = 100, node_type: Optional[str] = None) -> Dict:

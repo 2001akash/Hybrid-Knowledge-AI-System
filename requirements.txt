@@ -1,8 +1,10 @@
 # Core Dependencies
 python-dotenv==1.0.0
 
-# OpenAI
-openai>=1.0.0
+# FREE AI alternatives (No OpenAI needed!)
+groq>=0.4.0
+sentence-transformers>=2.2.0
+torch>=2.0.0
 
 # Pinecone (v3 SDK)
 pinecone-client>=3.0.0
@@ -15,8 +17,9 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
 
-# Progress & Logging
+# Progress & Utils
 tqdm==4.66.1
+psutil==5.9.0
 
 # Optional but recommended
 requests==2.31.0

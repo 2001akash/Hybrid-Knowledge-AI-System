@@ -1,125 +1,95 @@
 import os
-from dotenv import load_dotenv
 from neo4j import GraphDatabase
-from openai import OpenAI
+from groq import Groq
 from pinecone import Pinecone
-import re
-from typing import List, Dict, Tuple
-
-load_dotenv()
+from sentence_transformers import SentenceTransformer
+import config1
+from typing import List, Dict, Optional
 
 # Initialize clients
 driver = GraphDatabase.driver(
-    os.getenv("NEO4J_URI"),
-    auth=(os.getenv("NEO4J_USER"), os.getenv("NEO4J_PASSWORD"))
+    config1.NEO4J_URI,
+    auth=(config1.NEO4J_USER, config1.NEO4J_PASSWORD)
 )
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-index = pc.Index(os.getenv("PINECONE_INDEX_NAME", "travel-docs"))
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+pc = Pinecone(api_key=config1.PINECONE_API_KEY)
+index = pc.Index(config1.PINECONE_INDEX_NAME)
 
-EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+# Use Groq for chat (FREE!)
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-def extract_entities(query: str) -> Dict[str, List[str]]:
-    """Extract key entities from query using simple pattern matching"""
-    entities = {
-        "countries": [],
-        "cities": [],
-        "types": [],
-        "keywords": []
-    }
-    
-    # Common travel-related keywords
-    location_types = [
-        "restaurant", "hotel", "museum", "beach", "park", "temple", 
-        "market", "cafe", "bar", "landmark", "attraction", "monument"
-    ]
-    
-    query_lower = query.lower()
-    
-    # Extract location types
-    for loc_type in location_types:
-        if loc_type in query_lower:
-            entities["types"].append(loc_type)
-    
-    # Extract potential location names (capitalized words)
-    words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', query)
-    entities["keywords"].extend(words)
-    
-    return entities
+# Use free local embedding model
+print("📦 Loading embedding model...")
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+print("✅ Model ready!")
 
-def neo4j_search(query: str, limit: int = 5) -> List[Dict]:
-    """Search Neo4j knowledge graph using full-text search"""
-    with driver.session() as s:
+def neo4j_search(query: str, limit: int = 10) -> List[Dict]:
+    """Search Neo4j knowledge graph"""
+    with driver.session() as session:
         try:
-            # Try full-text search first
-            res = s.run("""
-                CALL db.index.fulltext.queryNodes('locationFullTextIndex', $q)
-                YIELD node, score 
-                MATCH (node)-[:IN_COUNTRY]->(c:Country)
-                RETURN node.name AS name, 
+            result = session.run("""
+                CALL db.index.fulltext.queryNodes('entityFullTextIndex', $q)
+                YIELD node, score
+                RETURN node.id AS id,
+                       node.name AS name, 
                        node.description AS description, 
                        node.type AS type,
-                       c.name AS country,
-                       node.rating AS rating,
+                       labels(node) AS labels,
                        score
                 ORDER BY score DESC
                 LIMIT $limit
             """, {"q": query, "limit": limit})
             
             results = []
-            for record in res:
+            for record in result:
                 results.append({
+                    "id": record["id"],
                     "name": record["name"],
                     "description": record["description"],
                     "type": record["type"],
-                    "country": record["country"],
-                    "rating": record["rating"],
+                    "labels": record["labels"],
                     "score": record["score"]
                 })
             
             return results
             
         except Exception as e:
-            print(f"Neo4j search error: {e}")
-            # Fallback to simple pattern matching
-            res = s.run("""
-                MATCH (l:Location)-[:IN_COUNTRY]->(c:Country)
-                WHERE l.name CONTAINS $q OR l.description CONTAINS $q OR c.name CONTAINS $q
-                RETURN l.name AS name, 
-                       l.description AS description, 
-                       l.type AS type,
-                       c.name AS country,
-                       l.rating AS rating
+            print(f"Neo4j search failed: {e}, using fallback")
+            result = session.run("""
+                MATCH (n:Entity)
+                WHERE n.name CONTAINS $q 
+                   OR n.description CONTAINS $q 
+                   OR n.type CONTAINS $q
+                RETURN n.id AS id,
+                       n.name AS name, 
+                       n.description AS description, 
+                       n.type AS type,
+                       labels(n) AS labels
                 LIMIT $limit
             """, {"q": query, "limit": limit})
             
-            return [dict(record) for record in res]
+            return [dict(record) for record in result]
 
-def get_locations_by_country(country: str, limit: int = 10) -> List[Dict]:
-    """Get top locations in a specific country"""
-    with driver.session() as s:
-        res = s.run("""
-            MATCH (l:Location)-[:IN_COUNTRY]->(c:Country {name: $country})
-            RETURN l.name AS name, 
-                   l.description AS description, 
-                   l.type AS type,
-                   l.rating AS rating
-            ORDER BY l.rating DESC
+def get_entity_relationships(entity_id: str, limit: int = 5) -> List[Dict]:
+    """Get relationships for a specific entity"""
+    with driver.session() as session:
+        result = session.run("""
+            MATCH (e:Entity {id: $id})-[r]->(related:Entity)
+            RETURN type(r) AS relationship,
+                   related.name AS name,
+                   related.type AS type,
+                   related.description AS description
             LIMIT $limit
-        """, {"country": country, "limit": limit})
+        """, {"id": entity_id, "limit": limit})
         
-        return [dict(record) for record in res]
+        return [dict(record) for record in result]
 
-def pinecone_search(query: str, k: int = 5, filters: Dict = None) -> List[Dict]:
-    """Search Pinecone vector database"""
+def pinecone_search(query: str, k: int = 5, filters: Optional[Dict] = None) -> List[Dict]:
+    """Search Pinecone vector database using free local embeddings"""
     try:
-        emb = openai_client.embeddings.create(
-            model=EMBEDDING_MODEL, 
-            input=query
-        ).data[0].embedding
+        # Generate embedding locally (FREE!)
+        emb = embedding_model.encode([query], show_progress_bar=False)[0].tolist()
         
-        # Apply filters if provided
+        # Query Pinecone
         query_params = {
             "vector": emb,
             "top_k": k,
@@ -138,7 +108,9 @@ def pinecone_search(query: str, k: int = 5, filters: Dict = None) -> List[Dict]:
                 "score": match.score,
                 "text": match.metadata.get("full_chunk", match.metadata.get("chunk_text", "")),
                 "source": match.metadata.get("source", ""),
-                "title": match.metadata.get("title", "")
+                "title": match.metadata.get("title", ""),
+                "country": match.metadata.get("country", ""),
+                "city": match.metadata.get("city", "")
             })
         
         return results
@@ -147,20 +119,17 @@ def pinecone_search(query: str, k: int = 5, filters: Dict = None) -> List[Dict]:
         print(f"Pinecone search error: {e}")
         return []
 
-def determine_query_type(query: str) -> str:
-    """Classify query to determine best retrieval strategy"""
+def classify_query(query: str) -> str:
+    """Classify query type"""
     query_lower = query.lower()
     
-    # Itinerary planning queries
-    if any(word in query_lower for word in ["itinerary", "trip", "plan", "days", "visit", "travel to"]):
+    if any(word in query_lower for word in ["itinerary", "trip", "plan", "days", "schedule"]):
         return "itinerary"
     
-    # Specific location queries
-    if any(word in query_lower for word in ["where", "find", "recommend", "best", "top"]):
+    if any(word in query_lower for word in ["recommend", "best", "top", "where to"]):
         return "recommendation"
     
-    # Factual queries
-    if any(word in query_lower for word in ["what", "who", "when", "how", "why"]):
+    if any(word in query_lower for word in ["what is", "tell me about", "explain"]):
         return "factual"
     
     return "general"
@@ -169,45 +138,53 @@ def build_context(query: str, neo4j_results: List[Dict], pinecone_results: List[
     """Build comprehensive context from both sources"""
     context_parts = []
     
-    # Add Neo4j structured data
     if neo4j_results:
-        context_parts.append("=== Locations from Knowledge Graph ===")
+        context_parts.append("=== Knowledge Graph Entities ===")
         for i, result in enumerate(neo4j_results[:5], 1):
-            location_info = f"{i}. {result.get('name', 'Unknown')}"
+            entity_info = f"{i}. {result.get('name', 'Unknown')}"
             if result.get('type'):
-                location_info += f" ({result['type']})"
-            if result.get('country'):
-                location_info += f" in {result['country']}"
+                entity_info += f" (Type: {result['type']})"
             if result.get('description'):
-                location_info += f"\n   Description: {result['description']}"
-            if result.get('rating'):
-                location_info += f"\n   Rating: {result['rating']}/5"
-            context_parts.append(location_info)
+                entity_info += f"\n   {result['description']}"
+            
+            if result.get('id'):
+                relationships = get_entity_relationships(result['id'], limit=3)
+                if relationships:
+                    entity_info += "\n   Connected to: "
+                    entity_info += ", ".join([
+                        f"{rel['name']} ({rel['relationship']})" 
+                        for rel in relationships
+                    ])
+            
+            context_parts.append(entity_info)
     
-    # Add Pinecone unstructured data
     if pinecone_results:
         context_parts.append("\n=== Detailed Travel Information ===")
         for i, result in enumerate(pinecone_results[:3], 1):
-            doc_info = f"{i}. From {result.get('title', 'Travel Guide')}:\n   {result.get('text', '')[:500]}..."
+            doc_info = f"{i}. From {result.get('title', 'Travel Guide')}"
+            if result.get('city') or result.get('country'):
+                location = [result.get('city'), result.get('country')]
+                doc_info += f" ({', '.join(filter(None, location))})"
+            doc_info += f":\n   {result.get('text', '')[:400]}..."
             context_parts.append(doc_info)
     
     return "\n\n".join(context_parts)
 
-def generate_answer(query: str, context: str, query_type: str) -> str:
-    """Generate answer using OpenAI with context-aware prompting"""
+def generate_answer_groq(query: str, context: str, query_type: str) -> str:
+    """Generate answer using Groq (FREE!)"""
     
     system_prompts = {
-        "itinerary": """You are an expert travel planner. Create detailed, day-by-day itineraries 
-        that include specific locations, activities, timing, and practical tips. Be specific and organized.""",
+        "itinerary": """You are an expert travel planner specializing in Vietnam. 
+        Create detailed, romantic itineraries with specific locations, timing, and activities.""",
         
-        "recommendation": """You are a knowledgeable travel advisor. Provide specific recommendations 
-        with clear reasoning, considering factors like ratings, location type, and traveler preferences.""",
+        "recommendation": """You are a knowledgeable travel advisor for Vietnam. 
+        Provide specific recommendations with reasoning.""",
         
-        "factual": """You are a travel information specialist. Provide accurate, concise answers 
-        based on the available information. If information is uncertain, say so.""",
+        "factual": """You are a Vietnam travel expert. 
+        Provide accurate, informative answers based on the knowledge provided.""",
         
-        "general": """You are a helpful travel assistant. Provide informative, friendly responses 
-        that help users plan their travels."""
+        "general": """You are a helpful Vietnam travel assistant. 
+        Provide friendly, informative responses."""
     }
     
     system_prompt = system_prompts.get(query_type, system_prompts["general"])
@@ -217,25 +194,26 @@ def generate_answer(query: str, context: str, query_type: str) -> str:
 {context}
 
 Instructions:
-- Be specific and use information from both the locations database and travel guides
-- If creating an itinerary, organize by days and include timing
-- Mention specific location names, types, and ratings when relevant
-- If information is limited, acknowledge it and provide best available guidance
-- Keep the response well-structured and easy to follow
+- Use specific entity names and details from the knowledge graph
+- Include relevant information from the travel guides
+- Be specific about locations, activities, and timing
+- If creating an itinerary, organize by days with morning/afternoon/evening activities
+- Make the response engaging and helpful
 """
     
     try:
-        resp = openai_client.chat.completions.create(
-            model=CHAT_MODEL,
+        # Use Groq's FREE API!
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",  # Fast and free!
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.7,
-            max_tokens=1500
+            max_tokens=2000
         )
         
-        return resp.choices[0].message.content
+        return response.choices[0].message.content
         
     except Exception as e:
         return f"Error generating response: {e}"
@@ -243,8 +221,7 @@ Instructions:
 def answer(query: str, verbose: bool = False) -> str:
     """Main function to answer queries using hybrid search"""
     
-    # Determine query type
-    query_type = determine_query_type(query)
+    query_type = classify_query(query)
     
     if verbose:
         print(f"\n🔍 Query type: {query_type}")
@@ -255,33 +232,26 @@ def answer(query: str, verbose: bool = False) -> str:
     pinecone_results = pinecone_search(query, k=5)
     
     if verbose:
-        print(f"📊 Found {len(neo4j_results)} results from Neo4j")
-        print(f"📊 Found {len(pinecone_results)} results from Pinecone\n")
-    
-    # For itinerary queries, also get top locations by country
-    entities = extract_entities(query)
-    if query_type == "itinerary" and entities["keywords"]:
-        for keyword in entities["keywords"]:
-            country_locations = get_locations_by_country(keyword, limit=15)
-            if country_locations:
-                neo4j_results.extend(country_locations)
-                if verbose:
-                    print(f"📍 Added {len(country_locations)} locations from {keyword}")
+        print(f"📊 Neo4j results: {len(neo4j_results)}")
+        print(f"📊 Pinecone results: {len(pinecone_results)}\n")
     
     # Build context
     context = build_context(query, neo4j_results, pinecone_results)
     
-    # Generate answer
-    answer_text = generate_answer(query, context, query_type)
+    if verbose:
+        print("📄 Context built, generating answer with Groq...\n")
+    
+    # Generate answer with Groq
+    answer_text = generate_answer_groq(query, context, query_type)
     
     return answer_text
 
 def interactive_chat():
     """Run interactive chat session"""
-    print("=" * 60)
-    print("🌍 Blue Enigma Travel Assistant")
-    print("=" * 60)
-    print("Ask me about travel destinations, itineraries, or recommendations!")
+    print("=" * 70)
+    print("🌏 Vietnam Travel Assistant - Powered by Groq (FREE!)")
+    print("=" * 70)
+    print("Ask me about Vietnam travel, itineraries, or recommendations!")
     print("Type 'quit' or 'exit' to end the session.\n")
     
     while True:
@@ -297,8 +267,8 @@ def interactive_chat():
             
             print("\n🤔 Thinking...\n")
             response = answer(query, verbose=True)
-            print(f"\n🌟 Assistant: {response}\n")
-            print("-" * 60 + "\n")
+            print(f"\n✨ Assistant:\n{response}\n")
+            print("-" * 70 + "\n")
             
         except KeyboardInterrupt:
             print("\n\n👋 Happy travels! Goodbye!")
@@ -307,12 +277,14 @@ def interactive_chat():
             print(f"\n❌ Error: {e}\n")
 
 if __name__ == "__main__":
-    # Test with example query
     test_query = "create a romantic 4 day itinerary for Vietnam"
-    print(f"Testing with: {test_query}\n")
+    print(f"Testing with: '{test_query}'\n")
     result = answer(test_query, verbose=True)
-    print(f"\nAnswer:\n{result}")
+    print(f"\n{'='*70}")
+    print("ANSWER:")
+    print('='*70)
+    print(result)
+    print('='*70)
     
-    # Start interactive mode
-    print("\n" + "=" * 60 + "\n")
+    print("\n\nStarting interactive mode...\n")
     interactive_chat()
