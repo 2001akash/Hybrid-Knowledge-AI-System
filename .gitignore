@@ -1,6 +1,8 @@
 venv
 .env
-.env.example
 __pycache__/
 *.pyc
 .DS_Store
+.ipynb_checkpoints
+logs/
+*.log

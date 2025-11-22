@@ -207,10 +207,8 @@ async def chat(q: Query):
 Added all required environment variables with documentation:
 
 ```env
-# OpenAI
-OPENAI_API_KEY=your_key
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_CHAT_MODEL=gpt-4o-mini
+# Groq
+GROQ_API_KEY=your_groq_key
 
 # Pinecone
 PINECONE_API_KEY=your_key

@@ -1,8 +1,5 @@
-Here is the **final polished README.md** — clean, concise, production-ready, and formatted so you can **copy–paste directly** into your repository.
 
----
-
-# **Blue Enigma – Hybrid AI Travel Assistant (Groq + Neo4j + Pinecone)**
+# **Hybrid AI Travel Assistant (Groq + Neo4j + Pinecone)**
 
 A **next-generation travel planning system** that combines:
 

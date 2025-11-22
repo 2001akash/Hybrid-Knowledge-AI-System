@@ -260,7 +260,6 @@ def upsert_docs(folder="data/*.json"):
 if __name__ == "__main__":
     print("🚀 Starting Pinecone upload with FREE local embeddings")
     print("   Using: all-MiniLM-L6-v2 (384 dimensions)")
-    print("   No OpenAI API needed!")
     print()
     
     upsert_docs()
