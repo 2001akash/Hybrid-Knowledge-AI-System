@@ -3,7 +3,7 @@ from neo4j import GraphDatabase
 from groq import Groq
 from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
-import config1
+import config as config1
 from typing import List, Dict, Optional
 
 # Initialize clients
@@ -14,13 +14,13 @@ driver = GraphDatabase.driver(
 pc = Pinecone(api_key=config1.PINECONE_API_KEY)
 index = pc.Index(config1.PINECONE_INDEX_NAME)
 
-# Use Groq for chat (FREE!)
+# Use Groq for chat
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # Use free local embedding model
-print("📦 Loading embedding model...")
+print(" Loading embedding model...")
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-print("✅ Model ready!")
+print(" Model ready!")
 
 def neo4j_search(query: str, limit: int = 10) -> List[Dict]:
     """Search Neo4j knowledge graph"""
@@ -86,7 +86,7 @@ def get_entity_relationships(entity_id: str, limit: int = 5) -> List[Dict]:
 def pinecone_search(query: str, k: int = 5, filters: Optional[Dict] = None) -> List[Dict]:
     """Search Pinecone vector database using free local embeddings"""
     try:
-        # Generate embedding locally (FREE!)
+        # Generate embedding locally 
         emb = embedding_model.encode([query], show_progress_bar=False)[0].tolist()
         
         # Query Pinecone
@@ -171,7 +171,7 @@ def build_context(query: str, neo4j_results: List[Dict], pinecone_results: List[
     return "\n\n".join(context_parts)
 
 def generate_answer_groq(query: str, context: str, query_type: str) -> str:
-    """Generate answer using Groq (FREE!)"""
+    """Generate answer using Groq API"""
     
     system_prompts = {
         "itinerary": """You are an expert travel planner specializing in Vietnam. 
@@ -202,7 +202,7 @@ Instructions:
 """
     
     try:
-        # Use Groq's FREE API!
+        # Use Groq's API!
         response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",  # Fast and free!
             messages=[
@@ -249,7 +249,7 @@ def answer(query: str, verbose: bool = False) -> str:
 def interactive_chat():
     """Run interactive chat session"""
     print("=" * 70)
-    print("🌏 Vietnam Travel Assistant - Powered by Groq (FREE!)")
+    print("🌏 Vietnam Travel Assistant")
     print("=" * 70)
     print("Ask me about Vietnam travel, itineraries, or recommendations!")
     print("Type 'quit' or 'exit' to end the session.\n")
@@ -277,7 +277,7 @@ def interactive_chat():
             print(f"\n❌ Error: {e}\n")
 
 if __name__ == "__main__":
-    test_query = "create a romantic 4 day itinerary for Vietnam"
+    test_query = "Create a Romantic 4 day itinerary for Vietnam"
     print(f"Testing with: '{test_query}'\n")
     result = answer(test_query, verbose=True)
     print(f"\n{'='*70}")

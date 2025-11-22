@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Blue Enigma Hybrid Travel Assistant",
+    title="Hybrid Travel Assistant",
     description="AI-powered travel planning using Neo4j + Pinecone + OpenAI",
     version="1.0.0"
 )
@@ -46,7 +46,7 @@ class HealthResponse(BaseModel):
 async def root():
     """Welcome endpoint"""
     return {
-        "message": "Welcome to Blue Enigma Travel Assistant API",
+        "message": "Welcome  Travel Assistant API",
         "docs": "/docs",
         "health": "/health"
     }
@@ -95,7 +95,7 @@ async def chat(q: Query):
 @app.get("/test", tags=["Testing"])
 async def test_query():
     """Test endpoint with predefined query"""
-    test_q = "create a romantic 4 day itinerary for Vietnam"
+    test_q = "Create a Romantic 4 day itinerary for Vietnam"
     try:
         result = answer(test_q, verbose=False)
         return {

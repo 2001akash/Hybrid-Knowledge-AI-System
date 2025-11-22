@@ -19,7 +19,7 @@ def setup_indexes():
         try:
             session.run("CREATE CONSTRAINT country_name IF NOT EXISTS FOR (c:Country) REQUIRE c.name IS UNIQUE")
             session.run("CREATE CONSTRAINT location_id IF NOT EXISTS FOR (l:Location) REQUIRE l.id IS UNIQUE")
-            print("✅ Constraints created")
+            print(" Constraints created")
         except Exception as e:
             print(f"Constraints may already exist: {e}")
         
@@ -29,7 +29,7 @@ def setup_indexes():
                 CREATE FULLTEXT INDEX locationFullTextIndex IF NOT EXISTS
                 FOR (l:Location) ON EACH [l.name, l.description, l.type]
             """)
-            print("✅ Full-text index created")
+            print("Full-text index created")
         except Exception as e:
             print(f"Full-text index may already exist: {e}")
 
@@ -37,12 +37,12 @@ def clear_database():
     """Clear all nodes and relationships (use with caution)"""
     with driver.session() as session:
         session.run("MATCH (n) DETACH DELETE n")
-        print("🗑️  Database cleared")
+        print("  Database cleared")
 
 def load_locations(csv_path="data/locations.csv"):
     """Load locations from CSV into Neo4j"""
     if not os.path.exists(csv_path):
-        print(f"❌ CSV file not found: {csv_path}")
+        print(f" CSV file not found: {csv_path}")
         return
     
     with open(csv_path, newline='', encoding='utf-8') as f:
@@ -55,7 +55,7 @@ def load_locations(csv_path="data/locations.csv"):
         for row in rows:
             session.execute_write(create_location, row)
     
-    print(f"✅ Loaded {len(rows)} locations into Neo4j")
+    print(f" Loaded {len(rows)} locations into Neo4j")
 
 def create_location(tx, row):
     """Create location node with relationships"""
@@ -104,7 +104,7 @@ def create_relationships():
             MERGE (l1)-[:SAME_COUNTRY]->(l2)
         """)
         
-        print("✅ Created additional relationships")
+        print(" Created additional relationships")
 
 def get_statistics():
     """Print database statistics"""
@@ -120,7 +120,7 @@ def get_statistics():
         result = session.run("MATCH ()-[r]->() RETURN count(r) as count")
         rel_count = result.single()['count']
         
-        print(f"\n📊 Database Statistics:")
+        print(f"\n Database Statistics:")
         print(f"   Locations: {location_count}")
         print(f"   Countries: {country_count}")
         print(f"   Relationships: {rel_count}")
@@ -167,11 +167,11 @@ def visualize(limit=50):
         plt.axis('off')
         plt.tight_layout()
         plt.savefig('knowledge_graph.png', dpi=300, bbox_inches='tight')
-        print("✅ Graph visualization saved to 'knowledge_graph.png'")
+        print(" Graph visualization saved to 'knowledge_graph.png'")
         plt.show()
 
 if __name__ == "__main__":
-    print("🚀 Starting Neo4j data loading...")
+    print(" Starting Neo4j data loading...")
     
     # Setup database
     setup_indexes()

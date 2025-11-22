@@ -10,7 +10,7 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
 # Pinecone Configuration
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "travel-docs")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "vietnam-travel")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 
 # Groq Configuration
@@ -37,6 +37,6 @@ def validate_config():
 if __name__ == "__main__":
     try:
         validate_config()
-        print("✅ All configurations are valid for Groq setup!")
+        print(" All configurations are valid for Groq setup!")
     except ValueError as e:
-        print(f"❌ Configuration error: {e}")
+        print(f" Configuration error: {e}")

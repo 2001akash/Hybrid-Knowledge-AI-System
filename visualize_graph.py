@@ -1,6 +1,6 @@
 import json
 from neo4j import GraphDatabase
-import config1
+import config as config1
 from typing import Optional, Dict, List
 
 driver = GraphDatabase.driver(
@@ -268,7 +268,7 @@ def generate_graph_visualization(limit: int = 100, node_type: Optional[str] = No
 <body>
     <div id="container">
         <div id="header">
-            <h1>🌏 Vietnam Travel Knowledge Graph</h1>
+            <h1> Vietnam Travel Knowledge Graph</h1>
             <div id="stats">
                 <span><strong>{len(graph_data["nodes"])}</strong> Entities</span> • 
                 <span><strong>{len(graph_data["relationships"])}</strong> Relationships</span> • 
@@ -460,7 +460,7 @@ def save_visualization_html(filename: str = "graph_visualization.html", limit: i
     html = generate_graph_visualization(limit=limit)
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(html)
-    print(f"✅ Visualization saved to {filename}")
+    print(f" Visualization saved to {filename}")
 
 if __name__ == "__main__":
     # Generate and save visualization

@@ -14,21 +14,21 @@ neo4j_uri = os.getenv('NEO4J_URI')
 neo4j_user = os.getenv('NEO4J_USER')
 neo4j_password = os.getenv('NEO4J_PASSWORD')
 
-print("\n📋 Configuration:")
+print("\n Configuration:")
 print(f"   URI: {neo4j_uri}")
 print(f"   User: {neo4j_user}")
 print(f"   Password: {'*' * len(neo4j_password) if neo4j_password else 'NOT SET'}")
 
 # Check if credentials are set
 if not neo4j_uri or not neo4j_user or not neo4j_password:
-    print("\n❌ ERROR: Missing credentials in .env file!")
+    print("\n ERROR: Missing credentials in .env file!")
     print("\nPlease ensure your .env file contains:")
     print("NEO4J_URI=bolt://localhost:7687")
     print("NEO4J_USER=neo4j")
     print("NEO4J_PASSWORD=your_password")
     exit(1)
 
-print("\n🔍 Testing connection...")
+print("\n Testing connection...")
 
 try:
     # Try to connect
@@ -39,14 +39,14 @@ try:
     
     # Verify connectivity
     driver.verify_connectivity()
-    print("✅ Connection established!")
+    print(" Connection established!")
     
     # Test a simple query
     print("\n🔍 Testing query execution...")
     with driver.session() as session:
         result = session.run("RETURN 1 as num, 'Hello Neo4j' as message")
         record = result.single()
-        print(f"✅ Query successful!")
+        print(f" Query successful!")
         print(f"   Result: num={record['num']}, message={record['message']}")
         
         # Get Neo4j version
@@ -55,7 +55,7 @@ try:
         print(f"   Neo4j Version: {version}")
     
     # Get database stats
-    print("\n📊 Database Statistics:")
+    print("\n Database Statistics:")
     with driver.session() as session:
         # Count nodes
         result = session.run("MATCH (n) RETURN count(n) as count")
@@ -70,15 +70,15 @@ try:
     driver.close()
     
     print("\n" + "=" * 60)
-    print("✅ ALL TESTS PASSED! Neo4j is ready to use.")
+    print(" ALL TESTS PASSED! Neo4j is ready to use.")
     print("=" * 60)
-    print("\n✨ You can now run: python load_to_neo4j.py")
+    print("\n You can now run: python load_to_neo4j.py")
     
 except Exception as e:
-    print(f"\n❌ CONNECTION FAILED!")
+    print(f"\n CONNECTION FAILED!")
     print(f"   Error: {e}")
     
-    print("\n🔧 Troubleshooting Steps:")
+    print("\n Troubleshooting Steps:")
     print("\n1. Check if Neo4j is running:")
     print("   docker ps | findstr neo4j")
     
@@ -105,9 +105,9 @@ except Exception as e:
     print("\n6. Verify .env file location:")
     env_path = os.path.join(os.getcwd(), '.env')
     if os.path.exists(env_path):
-        print(f"   ✅ .env found at: {env_path}")
+        print(f"    .env found at: {env_path}")
     else:
-        print(f"   ❌ .env NOT found at: {env_path}")
+        print(f"    .env NOT found at: {env_path}")
         print("   Create .env from .env.example")
     
     exit(1)

@@ -13,13 +13,13 @@ load_dotenv()
 # Initialize clients
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 
-INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "travel-docs")
+INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 DIMENSION = 384  # all-MiniLM-L6-v2 dimension
 
 # Use free local embedding model instead of OpenAI
-print("📦 Loading embedding model (one-time download)...")
+print(" Loading embedding model...")
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  # Free, fast, local
-print("✅ Model loaded!")
+print(" Model loaded!")
 
 # MEMORY OPTIMIZATION: Smaller batch sizes
 EMBED_BATCH_SIZE = 20
@@ -125,7 +125,7 @@ def extract_metadata(doc, filepath):
 
 def process_file_streaming(fpath, index):
     """Process a single file with streaming to minimize memory usage"""
-    print(f"\n📄 Processing: {os.path.basename(fpath)}")
+    print(f"\n Processing: {os.path.basename(fpath)}")
     
     try:
         # Load JSON
@@ -134,21 +134,21 @@ def process_file_streaming(fpath, index):
         
         text = doc.get("text", "")
         if not text:
-            print(f"  ⚠️  No text found, skipping")
+            print(f"    No text found, skipping")
             return 0
         
-        print(f"  📏 Text length: {len(text)} characters")
+        print(f"   Text length: {len(text)} characters")
         
         # Extract metadata
         base_metadata = extract_metadata(doc, fpath)
         
         # Chunk the text
-        print(f"  ✂️  Chunking text...")
+        print(f"    Chunking text...")
         chunks = chunk_text(text)
-        print(f"  ✅ Created {len(chunks)} chunks")
+        print(f"   Created {len(chunks)} chunks")
         
         if not chunks:
-            print(f"  ⚠️  No chunks created, skipping")
+            print(f"    No chunks created, skipping")
             return 0
         
         # Process in smaller sub-batches
@@ -159,10 +159,10 @@ def process_file_streaming(fpath, index):
             batch_end = min(batch_start + chunk_batch_size, len(chunks))
             chunk_batch = chunks[batch_start:batch_end]
             
-            print(f"  🔄 Processing chunks {batch_start+1}-{batch_end}/{len(chunks)}")
+            print(f"   Processing chunks {batch_start+1}-{batch_end}/{len(chunks)}")
             
             # Generate embeddings (FREE with local model!)
-            print(f"  🧠 Generating embeddings...")
+            print(f"   Generating embeddings...")
             vectors = embed_with_local_model(chunk_batch)
             
             # Prepare vectors for upsert
@@ -181,7 +181,7 @@ def process_file_streaming(fpath, index):
                 upsert_data.append((vector_id, vector, metadata))
             
             # Upsert to Pinecone
-            print(f"  ⬆️  Uploading to Pinecone...")
+            print(f"    Uploading to Pinecone...")
             for i in range(0, len(upsert_data), UPSERT_BATCH_SIZE):
                 batch_slice = upsert_data[i:i + UPSERT_BATCH_SIZE]
                 index.upsert(vectors=batch_slice)
@@ -194,18 +194,18 @@ def process_file_streaming(fpath, index):
             del upsert_data
             gc.collect()
             
-            print(f"  ✅ Uploaded {total_uploaded}/{len(chunks)} chunks")
+            print(f" Uploaded {total_uploaded}/{len(chunks)} chunks")
         
         # Final cleanup
         del chunks
         del doc
         gc.collect()
         
-        print(f"  ✅ Successfully processed {total_uploaded} chunks")
+        print(f"   Successfully processed {total_uploaded} chunks")
         return total_uploaded
         
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        print(f"   Error: {e}")
         import traceback
         traceback.print_exc()
         return 0
@@ -216,17 +216,17 @@ def upsert_docs(folder="data/*.json"):
     files = glob.glob(folder)
     
     if not files:
-        print(f"⚠️  No files found matching pattern: {folder}")
+        print(f"  No files found matching pattern: {folder}")
         return
     
-    print(f"📁 Found {len(files)} JSON files")
+    print(f" Found {len(files)} JSON files")
     for f in files:
         print(f"  - {f} ({os.path.getsize(f) / 1024:.1f} KB)")
     
     # Initialize index
     print(f"\n🔧 Initializing Pinecone index: {INDEX_NAME}")
     index = initialize_index()
-    print(f"✅ Index ready")
+    print(f" Index ready")
     
     # Process files one by one
     total_chunks = 0
@@ -241,7 +241,7 @@ def upsert_docs(folder="data/*.json"):
     
     # Print final stats
     print(f"\n{'='*60}")
-    print(f"📊 Upload Summary")
+    print(f" Upload Summary")
     print(f"{'='*60}")
     print(f"  Files processed: {successful_files}/{len(files)}")
     print(f"  Total chunks uploaded: {total_chunks}")
@@ -255,10 +255,10 @@ def upsert_docs(folder="data/*.json"):
         print(f"  Could not retrieve index stats: {e}")
     
     print(f"{'='*60}")
-    print(f"✅ Upload complete!")
+    print(f"Upload complete!")
 
 if __name__ == "__main__":
-    print("🚀 Starting Pinecone upload with FREE local embeddings")
+    print(" Starting Pinecone upload with FREE local embeddings")
     print("   Using: all-MiniLM-L6-v2 (384 dimensions)")
     print()
     

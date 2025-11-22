@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hybrid AI Travel Assistant</title>
+
+    <style>
+        body {
+            margin: 0;
+            background: #f5f7fa;
+            font-family: "Segoe UI", sans-serif;
+        }
+
+        header {
+            background: #1e293b;
+            color: #fff;
+            padding: 20px 30px;
+            font-size: 26px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .container {
+            margin: 30px auto;
+            width: 90%;
+            max-width: 1000px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px 25px;
+            margin-top: 20px;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        }
+
+        .input-box {
+            width: 100%;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            font-size: 16px;
+            outline: none;
+        }
+
+        .btn {
+            margin-top: 15px;
+            padding: 12px 20px;
+            border: none;
+            background: #4f46e5;
+            font-size: 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background: #4338ca;
+        }
+
+        .section-title {
+            margin-top: 25px;
+            font-size: 20px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .list {
+            padding-left: 18px;
+            font-size: 15px;
+        }
+
+        .loader {
+            display: none;
+            margin-top: 15px;
+            font-size: 15px;
+            color: #64748b;
+        }
+
+        .answer-box {
+            white-space: pre-wrap;
+            line-height: 1.6;
+            font-size: 16px;
+            color: #1e293b;
+        }
+
+        .context-block {
+            background: #f1f5f9;
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-top: 8px;
+            border-left: 4px solid #0ea5e9;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        
+    </style>
+</head>
+
+<body>
+
+<header>Hybrid AI Travel Assistant</header>
+
+<div class="container">
+
+    <div class="card">
+        <h2>Ask something…</h2>
+        <input id="queryInput" class="input-box" placeholder="e.g. create a romantic 4-day itinerary for Vietnam">
+        <button onclick="sendQuery()" class="btn">Ask</button>
+
+        <div id="loader" class="loader">⏳ Processing…</div>
+    </div>
+
+    <div class="card">
+        <div class="section-title">🌐 Neo4j Results</div>
+        <div id="neo4jResults" class="list"></div>
+
+        <div class="section-title">📦 Pinecone Results</div>
+        <div id="pineconeResults" class="list"></div>
+
+        <div class="section-title">🧠 Final Answer</div>
+        <div id="answerBox" class="answer-box"></div>
+    </div>
+
+</div>
+
+<script>
+async function sendQuery() {
+    const query = document.getElementById("queryInput").value;
+    if (!query.trim()) return alert("Please enter a query");
+
+    document.getElementById("loader").style.display = "block";
+    document.getElementById("answerBox").innerHTML = "";
+    document.getElementById("neo4jResults").innerHTML = "";
+    document.getElementById("pineconeResults").innerHTML = "";
+
+    try {
+        const response = await fetch("http://localhost:8000/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query })
+        });
+
+        const data = await response.json();
+        document.getElementById("loader").style.display = "none";
+
+        // LLM Answer
+        document.getElementById("answerBox").innerHTML = data.answer || "No answer";
+
+        // Neo4j Results
+        if (data.neo4j && data.neo4j.length > 0) {
+            data.neo4j.forEach(item => {
+                document.getElementById("neo4jResults").innerHTML += `
+                    <div class="context-block">
+                        <b>${item.name}</b> (${item.type})<br>
+                        Rating: ${item.rating || "N/A"}
+                    </div>`;
+            });
+        } else {
+            document.getElementById("neo4jResults").innerHTML = "No results.";
+        }
+
+        // Pinecone Results
+        if (data.pinecone && data.pinecone.length > 0) {
+            data.pinecone.forEach(p => {
+                document.getElementById("pineconeResults").innerHTML += `
+                    <div class="context-block">${p.chunk}</div>`;
+            });
+        } else {
+            document.getElementById("pineconeResults").innerHTML = "No results.";
+        }
+
+    } catch (err) {
+        document.getElementById("loader").style.display = "none";
+        alert("Backend is not running or wrong URL. Please start FastAPI.");
+        console.error(err);
+    }
+}
+</script>
+
+</body>
+</html>
