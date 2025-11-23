@@ -1,13 +1,15 @@
-# Core Dependencies
+# Environment
 python-dotenv==1.0.0
 
-# FREE AI alternatives (No OpenAI needed!)
+# FREE AI (Groq)
 groq>=0.4.0
+
+# Local Embeddings (MiniLM)
 sentence-transformers>=2.2.0
 torch>=2.0.0
 
-# Pinecone (v3 SDK)
-pinecone-client>=3.0.0
+# Pinecone v3 SDK (Correct)
+pinecone==4.0.0
 
 # Neo4j
 neo4j>=5.0.0
@@ -17,9 +19,7 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
 
-# Progress & Utils
+# Utilities
 tqdm==4.66.1
 psutil==5.9.0
-
-# Optional but recommended
 requests==2.31.0
