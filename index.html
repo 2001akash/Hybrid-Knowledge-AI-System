@@ -42,6 +42,7 @@
             border: 1px solid #cbd5e1;
             font-size: 16px;
             outline: none;
+            box-sizing: border-box;
         }
 
         .btn {
@@ -65,10 +66,23 @@
             font-size: 20px;
             font-weight: 700;
             color: #1e293b;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+
+        .section-badge {
+            display: inline-block;
+            background: #e0e7ff;
+            color: #4338ca;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
         }
 
         .list {
-            padding-left: 18px;
+            padding-left: 0;
             font-size: 15px;
         }
 
@@ -77,23 +91,66 @@
             margin-top: 15px;
             font-size: 15px;
             color: #64748b;
+            text-align: center;
         }
 
         .answer-box {
-            white-space: pre-wrap;
-            line-height: 1.6;
+            line-height: 1.8;
             font-size: 16px;
             color: #1e293b;
+            margin-top: 15px;
+        }
+
+        /* Markdown-style formatting */
+        .answer-box h1, .answer-box h2, .answer-box h3 {
+            color: #1e293b;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .answer-box strong {
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .answer-box ul, .answer-box ol {
+            margin-left: 20px;
+            margin-top: 8px;
+        }
+
+        .answer-box li {
+            margin-bottom: 6px;
+        }
+
+        .answer-box p {
+            margin-bottom: 12px;
         }
 
         .context-block {
             background: #f1f5f9;
-            padding: 12px 15px;
+            padding: 15px;
             border-radius: 6px;
-            margin-top: 8px;
+            margin-top: 10px;
             border-left: 4px solid #0ea5e9;
             font-size: 14px;
-            white-space: pre-wrap;
+        }
+
+        .context-block b {
+            color: #0f172a;
+            font-size: 15px;
+        }
+
+        .context-source {
+            color: #64748b;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        .empty-state {
+            color: #94a3b8;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
         }
         
     </style>
@@ -101,37 +158,75 @@
 
 <body>
 
-<header>Hybrid AI Travel Assistant</header>
+<header>🌏 Hybrid AI Travel Assistant</header>
 
 <div class="container">
 
     <div class="card">
-        <h2>Ask something…</h2>
+        <h2>✈️ Ask About Your Travel Plans</h2>
         <input id="queryInput" class="input-box" placeholder="e.g. create a romantic 4-day itinerary for Vietnam">
-        <button onclick="sendQuery()" class="btn">Ask</button>
+        <button onclick="sendQuery()" class="btn"> Generate Answer</button>
 
-        <div id="loader" class="loader">⏳ Processing…</div>
+        <div id="loader" class="loader">⏳ Processing your request...</div>
     </div>
 
-    <div class="card">
-        <div class="section-title">🌐 Neo4j Results</div>
+    <div class="card" id="resultsCard" style="display: none;">
+        <div class="section-title"> AI-Generated Answer</div>
+        <div id="answerBox" class="answer-box"></div>
+
+        <div class="section-title">
+             Knowledge Graph Context
+            <span class="section-badge">Neo4j</span>
+        </div>
         <div id="neo4jResults" class="list"></div>
 
-        <div class="section-title">📦 Pinecone Results</div>
+        <div class="section-title">
+             Vector Search Context
+            <span class="section-badge">Pinecone</span>
+        </div>
         <div id="pineconeResults" class="list"></div>
-
-        <div class="section-title">🧠 Final Answer</div>
-        <div id="answerBox" class="answer-box"></div>
     </div>
 
 </div>
 
 <script>
+// Function to convert markdown-style text to HTML
+function formatMarkdown(text) {
+    if (!text) return '';
+    
+    // Convert **bold** to <strong>
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    
+    // Convert *italic* to <em>
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    
+    // Convert bullet points (lines starting with * or -)
+    text = text.replace(/^[\*\-]\s+(.+)$/gm, '<li>$1</li>');
+    
+    // Wrap consecutive list items in <ul>
+    text = text.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+    
+    // Convert line breaks to paragraphs
+    text = text.split('\n\n').map(para => {
+        if (para.trim() && !para.startsWith('<ul>') && !para.startsWith('<li>')) {
+            return '<p>' + para + '</p>';
+        }
+        return para;
+    }).join('');
+    
+    return text;
+}
+
 async function sendQuery() {
     const query = document.getElementById("queryInput").value;
-    if (!query.trim()) return alert("Please enter a query");
+    if (!query.trim()) {
+        alert("Please enter a query");
+        return;
+    }
 
+    // Show loader, hide results
     document.getElementById("loader").style.display = "block";
+    document.getElementById("resultsCard").style.display = "none";
     document.getElementById("answerBox").innerHTML = "";
     document.getElementById("neo4jResults").innerHTML = "";
     document.getElementById("pineconeResults").innerHTML = "";
@@ -143,41 +238,83 @@ async function sendQuery() {
             body: JSON.stringify({ query })
         });
 
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const data = await response.json();
+        
+        // Hide loader, show results
         document.getElementById("loader").style.display = "none";
+        document.getElementById("resultsCard").style.display = "block";
 
-        // LLM Answer
-        document.getElementById("answerBox").innerHTML = data.answer || "No answer";
+        // Display LLM Answer with markdown formatting
+        const formattedAnswer = formatMarkdown(data.answer || "No answer generated");
+        document.getElementById("answerBox").innerHTML = formattedAnswer;
 
-        // Neo4j Results
+        // Display Neo4j Results
+        const neo4jDiv = document.getElementById("neo4jResults");
         if (data.neo4j && data.neo4j.length > 0) {
             data.neo4j.forEach(item => {
-                document.getElementById("neo4jResults").innerHTML += `
-                    <div class="context-block">
-                        <b>${item.name}</b> (${item.type})<br>
-                        Rating: ${item.rating || "N/A"}
-                    </div>`;
+                const block = document.createElement('div');
+                block.className = 'context-block';
+                
+                let content = `<b>${item.name || 'Unknown'}</b>`;
+                if (item.type) {
+                    content += ` <span style="color: #64748b;">(${item.type})</span>`;
+                }
+                
+                if (item.description) {
+                    content += `<br><div style="margin-top: 8px; color: #475569;">${item.description}</div>`;
+                }
+                
+                if (item.rating && item.rating !== 'N/A') {
+                    content += `<br><span style="color: #f59e0b;">⭐ Rating: ${item.rating}</span>`;
+                }
+                
+                block.innerHTML = content;
+                neo4jDiv.appendChild(block);
             });
         } else {
-            document.getElementById("neo4jResults").innerHTML = "No results.";
+            neo4jDiv.innerHTML = '<div class="empty-state">No knowledge graph results</div>';
         }
 
-        // Pinecone Results
+        // Display Pinecone Results
+        const pineconeDiv = document.getElementById("pineconeResults");
         if (data.pinecone && data.pinecone.length > 0) {
-            data.pinecone.forEach(p => {
-                document.getElementById("pineconeResults").innerHTML += `
-                    <div class="context-block">${p.chunk}</div>`;
+            data.pinecone.forEach((p, idx) => {
+                const block = document.createElement('div');
+                block.className = 'context-block';
+                
+                let content = `<b>Context ${idx + 1}</b>`;
+                if (p.source) {
+                    content += `<span class="context-source">• ${p.source}</span>`;
+                }
+                content += `<div style="margin-top: 8px; color: #475569;">${p.chunk || 'No content'}</div>`;
+                
+                block.innerHTML = content;
+                pineconeDiv.appendChild(block);
             });
         } else {
-            document.getElementById("pineconeResults").innerHTML = "No results.";
+            pineconeDiv.innerHTML = '<div class="empty-state">No vector search results</div>';
         }
+
+        // Scroll to results
+        document.getElementById("resultsCard").scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     } catch (err) {
         document.getElementById("loader").style.display = "none";
-        alert("Backend is not running or wrong URL. Please start FastAPI.");
-        console.error(err);
+        alert("Error: " + err.message + "\n\nMake sure:\n1. FastAPI is running: python fastapi_app.py\n2. Backend is at http://localhost:8000");
+        console.error("Error details:", err);
     }
 }
+
+// Allow Enter key to submit
+document.getElementById("queryInput").addEventListener("keypress", function(event) {
+    if (event.key === "Enter") {
+        sendQuery();
+    }
+});
 </script>
 
 </body>

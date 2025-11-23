@@ -3,18 +3,18 @@ from neo4j import GraphDatabase
 from groq import Groq
 from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
-import config as config1
+import config
 from typing import List, Dict, Optional
 
 # Initialize clients
 driver = GraphDatabase.driver(
-    config1.NEO4J_URI,
-    auth=(config1.NEO4J_USER, config1.NEO4J_PASSWORD)
+    config.NEO4J_URI,
+    auth=(config.NEO4J_USER, config.NEO4J_PASSWORD)
 )
-pc = Pinecone(api_key=config1.PINECONE_API_KEY)
-index = pc.Index(config1.PINECONE_INDEX_NAME)
+pc = Pinecone(api_key=config.PINECONE_API_KEY)
+index = pc.Index(config.PINECONE_INDEX_NAME)
 
-# Use Groq for chat
+# Use Groq for chat (FREE!)
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # Use free local embedding model
@@ -86,8 +86,21 @@ def get_entity_relationships(entity_id: str, limit: int = 5) -> List[Dict]:
 def pinecone_search(query: str, k: int = 5, filters: Optional[Dict] = None) -> List[Dict]:
     """Search Pinecone vector database using free local embeddings"""
     try:
-        # Generate embedding locally 
+        # Generate embedding locally (FREE!)
         emb = embedding_model.encode([query], show_progress_bar=False)[0].tolist()
+        
+        # AUTO-DETECT country from query to filter results
+        if not filters:
+            query_lower = query.lower()
+            if any(word in query_lower for word in ['vietnam', 'hanoi', 'saigon', 'halong', 'hoi an', 'sapa', 'mekong']):
+                filters = {"country": "Vietnam"}
+                print("   🔍 Auto-filtering: Vietnam content only")
+            elif any(word in query_lower for word in ['delhi', 'india', 'taj mahal', 'red fort']):
+                filters = {"country": "India"}  
+                print("   🔍 Auto-filtering: India content only")
+            elif any(word in query_lower for word in ['goa', 'beach', 'baga', 'palolem']):
+                filters = {"country": "India"}
+                print("   🔍 Auto-filtering: India (Goa) content only")
         
         # Query Pinecone
         query_params = {
@@ -171,7 +184,7 @@ def build_context(query: str, neo4j_results: List[Dict], pinecone_results: List[
     return "\n\n".join(context_parts)
 
 def generate_answer_groq(query: str, context: str, query_type: str) -> str:
-    """Generate answer using Groq API"""
+    """Generate answer using Groq (FREE!)"""
     
     system_prompts = {
         "itinerary": """You are an expert travel planner specializing in Vietnam. 
@@ -202,7 +215,7 @@ Instructions:
 """
     
     try:
-        # Use Groq's API!
+        # Use Groq's FREE API!
         response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",  # Fast and free!
             messages=[
@@ -224,22 +237,22 @@ def answer(query: str, verbose: bool = False) -> str:
     query_type = classify_query(query)
     
     if verbose:
-        print(f"\n🔍 Query type: {query_type}")
-        print(f"📝 Processing: {query}\n")
+        print(f"\n Query type: {query_type}")
+        print(f" Processing: {query}\n")
     
     # Search both sources
     neo4j_results = neo4j_search(query, limit=10)
     pinecone_results = pinecone_search(query, k=5)
     
     if verbose:
-        print(f"📊 Neo4j results: {len(neo4j_results)}")
-        print(f"📊 Pinecone results: {len(pinecone_results)}\n")
+        print(f" Neo4j results: {len(neo4j_results)}")
+        print(f" Pinecone results: {len(pinecone_results)}\n")
     
     # Build context
     context = build_context(query, neo4j_results, pinecone_results)
     
     if verbose:
-        print("📄 Context built, generating answer with Groq...\n")
+        print(" Context built, generating answer with Groq...\n")
     
     # Generate answer with Groq
     answer_text = generate_answer_groq(query, context, query_type)
@@ -249,7 +262,7 @@ def answer(query: str, verbose: bool = False) -> str:
 def interactive_chat():
     """Run interactive chat session"""
     print("=" * 70)
-    print("🌏 Vietnam Travel Assistant")
+    print(" Vietnam Travel Assistant ")
     print("=" * 70)
     print("Ask me about Vietnam travel, itineraries, or recommendations!")
     print("Type 'quit' or 'exit' to end the session.\n")
@@ -265,19 +278,19 @@ def interactive_chat():
                 print("\n👋 Happy travels! Goodbye!")
                 break
             
-            print("\n🤔 Thinking...\n")
+            print("\n Thinking...\n")
             response = answer(query, verbose=True)
-            print(f"\n✨ Assistant:\n{response}\n")
+            print(f"\n Assistant:\n{response}\n")
             print("-" * 70 + "\n")
             
         except KeyboardInterrupt:
-            print("\n\n👋 Happy travels! Goodbye!")
+            print("\n\n Happy travels! Goodbye!")
             break
         except Exception as e:
-            print(f"\n❌ Error: {e}\n")
+            print(f"\n Error: {e}\n")
 
 if __name__ == "__main__":
-    test_query = "Create a Romantic 4 day itinerary for Vietnam"
+    test_query = "create a romantic 4 day itinerary for Vietnam"
     print(f"Testing with: '{test_query}'\n")
     result = answer(test_query, verbose=True)
     print(f"\n{'='*70}")
